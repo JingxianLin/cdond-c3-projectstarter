@@ -2,6 +2,11 @@ version: 2.1
 
 ### It's a good practice to keep your commands at the top of the config file. In this project, you'll need at least 2 commands:
 
+parameters:
+  build-image:
+    type: string
+    default: "circleci/node:13.8.0"
+
 # commands:
 #   destroy-environment:
 #     description: Destroy backend and frontend cloudformation stacks given a workflow ID.
@@ -12,25 +17,48 @@ version: 2.1
 #     ...
 
 jobs:
-  hello-world: # Delete this job when you get started
+
+#  build-frontend:
+
+  build-frontend:
     docker:
-      - image: amazon/aws-cli
+      - image: << pipeline.parameters.build-image >>
     steps:
       - checkout
       - run:
-          name: Say Hello
+          name: Install
           command: |
-            echo "Hello World"
+            cd frontend
+            npm install
+      - run:
+          name: Build
+          command: |
+            cd frontend
+            npm run build
 
-#  build-frontend:
+#  build-backend:
 
-#  build-frontend:
+  build-backend:
+    docker:
+      - image: << pipeline.parameters.build-image >>
+    steps:
+      - checkout
+      - run:
+          name: Install
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Build
+          command: |
+            cd backend
+            npm run build
 
 #  test-frontend:
 
-#  est-backend:
+#  test-backend:
 
-#  can-frontend:
+#  scan-frontend:
 
 #  scan-backend:
 
@@ -49,6 +77,28 @@ jobs:
 #  cloudfront-update:
 
 workflows:
-  default:
+  backend:
     jobs:
-      - hello-world
+      - build-backend
+      - test-backend:
+          requires:
+            - build-backend
+      - analyze-backend:
+          requires:
+            - test-backend
+      - create_backend_infrastructure:
+          requires:
+            - analyze-backend
+
+  frontend:
+    jobs:
+      - build-frontend
+      - test-frontend:
+          requires:
+            - build-frontend
+      - analyze-frontend:
+          requires:
+            - test-frontend
+      - create_frontend_infrastructure:
+          requires:
+            - analyze-frontend
