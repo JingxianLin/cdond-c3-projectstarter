@@ -56,15 +56,113 @@ jobs:
 
 #  test-frontend:
 
+  test-frontend:
+    docker:
+      - image: << pipeline.parameters.build-image >>
+    steps:
+      - checkout
+      - run:
+          name: Install
+          command: |
+            cd frontend
+            npm install
+      - run:
+          name: Test
+          command: |
+            cd frontend
+            npm run test
+
 #  test-backend:
+
+  test-backend:
+    docker:
+      - image: << pipeline.parameters.build-image >>
+    steps:
+      - checkout
+      - run:
+          name: Install
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Test
+          command: |
+            cd backend
+            npm run test
 
 #  scan-frontend:
 
+  analyze-frontend:
+    docker:
+      - image: << pipeline.parameters.build-image >>
+    steps:
+      - checkout
+      - run:
+          name: Install
+          command: |
+            cd frontend
+            npm install
+      - run:
+          name: Analyze
+          command: |
+            cd frontend
+            npm audit --audit-level=critical
+
 #  scan-backend:
+
+  analyze-backend:
+    docker:
+      - image: << pipeline.parameters.build-image >>
+    steps:
+      - checkout
+      - run:
+          name: Install
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Analyze
+          command: |
+            cd backend
+            npm audit --audit-level=critical
 
 #  deploy-infrastructure:
 
+  create_frontend_infrastructure:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Create Frontend Infrastructure
+          command: |
+            aws cloudformation deploy \
+              --stack-name superpowers \
+              --template-file .circleci/files/frontend.yml \
+              --region us-west-2 \
+              --parameter-overrides "ID=1"
+            ARN=$(aws cloudformation list-exports --region us-west-2 --query "Exports[0].Value" --output text)
+            echo "ARN=$ARN"
+            curl -H "Content-Type: text/plain" -H "token: bade66f6-b826-4e77-9310-dfeddbd3aaed" --request PUT --data "$ARN" https://api.memstash.io/values/arn
+
 #  configure-infrastructure:
+
+  create_backend_infrastructure:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Create Backend Infrastructure
+          command: |
+            aws cloudformation deploy \
+              --stack-name superpowers \
+              --template-file .circleci/files/backend.yml \
+              --region us-west-2 \
+              --parameter-overrides "ID=1"
+            PUBLIC_DNS=$(aws ec2 describe-instances --region us-west-2 --query "Reservations[*].Instances[0].PublicDnsName"  --output text)
+            echo "PUBLIC_DNS=$PUBLIC_DNS"
+            curl -H "Content-Type: text/plain" -H "token: bb9fa411-596b-45ef-ab32-8111e6af5491" --request PUT --data "$PUBLIC_DNS" https://api.memstash.io/values/public_dns
 
 #  run-migrations:
 
