@@ -18,6 +18,24 @@ parameters:
 
 jobs:
 
+#  build-backend:
+
+  build-backend:
+    docker:
+      - image: << pipeline.parameters.build-image >>
+    steps:
+      - checkout
+      - run:
+          name: Install
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: Build
+          command: |
+            cd backend
+            npm run build
+
 #  build-frontend:
 
   build-frontend:
@@ -36,23 +54,7 @@ jobs:
             cd frontend
             npm run build
 
-#  build-backend:
 
-  build-backend:
-    docker:
-      - image: << pipeline.parameters.build-image >>
-    steps:
-      - checkout
-      - run:
-          name: Install
-          command: |
-            cd backend
-            npm install
-      - run:
-          name: Build
-          command: |
-            cd backend
-            npm run build
 
 #  test-frontend:
 
