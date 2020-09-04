@@ -16,189 +16,333 @@ parameters:
 #     description: Revert the last migration if successfully run in the current workflow.
 #     ...
 
+orbs:
+  node: circleci/node@3.0.1
+
 jobs:
 
-#  build-backend:
-
-  build-backend:
-    docker:
-      - image: << pipeline.parameters.build-image >>
+  checkout-code:
+    executor:
+      name: node/default
     steps:
       - checkout
-      - run:
-          name: Install
-          command: |
-            cd backend
-            npm install
-      - run:
-          name: Build
-          command: |
-            cd backend
-            npm run build
-
-#  build-frontend:
-
-  build-frontend:
-    docker:
-      - image: << pipeline.parameters.build-image >>
+      - run: npm install
+  build-compile-fend:
+    executor:
+      name: node/default
     steps:
       - checkout
-      - run:
-          name: Install
-          command: |
-            cd frontend
-            npm install
-      - run:
-          name: Build
-          command: |
-            cd frontend
-            npm run build
-
-
-
-#  test-frontend:
-
-  test-frontend:
-    docker:
-      - image: << pipeline.parameters.build-image >>
+      - run: cd frontend && npm install
+      - run: cd frontend && npm run build
+  build-compile-bend:
+    executor:
+      name: node/default
     steps:
       - checkout
-      - run:
-          name: Install
-          command: |
-            cd frontend
-            npm install
-      - run:
-          name: Test
-          command: |
-            cd frontend
-            npm run test
-
-#  test-backend:
-
-  test-backend:
-    docker:
-      - image: << pipeline.parameters.build-image >>
+      - run: cd backend && npm install
+      - run: cd backend && npm run build
+  compile-test-bend:
+    executor:
+      name: node/default
     steps:
       - checkout
-      - run:
-          name: Install
-          command: |
-            cd backend
-            npm install
-      - run:
-          name: Test
-          command: |
-            cd backend
-            npm run test
-
-#  scan-frontend:
-
-  analyze-frontend:
-    docker:
-      - image: << pipeline.parameters.build-image >>
+      - run: cd backend && npm install
+      - run: cd backend && npm test
+  compile-test-fend:
+    executor:
+      name: node/default
+    environment: 
+      NODE_OPTIONS=--max_old_space_size=8192
     steps:
       - checkout
-      - run:
-          name: Install
-          command: |
-            cd frontend
-            npm install
-      - run:
-          name: Analyze
-          command: |
-            cd frontend
-            npm audit --audit-level=critical
-
-#  scan-backend:
-
-  analyze-backend:
-    docker:
-      - image: << pipeline.parameters.build-image >>
+      - run: cd frontend && npm install
+      - run: cd frontend && npm test
+  check-vulnerability:
+    executor:
+      name: node/default
+    environment: 
+      NODE_OPTIONS=--max_old_space_size=8192
     steps:
       - checkout
-      - run:
-          name: Install
-          command: |
-            cd backend
-            npm install
-      - run:
-          name: Analyze
-          command: |
-            cd backend
-            npm audit fix --audit-level=critical --force
-
-#  deploy-infrastructure:
-
-  create_frontend_infrastructure:
+      - run: cd backend && npm audit --audit-level=critical
+      - run: cd frontend && npm audit --audit-level=critical
+  create_infrastructure:
     docker:
       - image: amazon/aws-cli
     steps:
       - checkout
       - run:
-          name: Create Frontend Infrastructure
+          name: Ensure backend infrastructure exist
           command: |
             aws cloudformation deploy \
-              --stack-name superpowers \
-              --template-file .circleci/files/frontend.yml \
-              --region us-west-2 \
-              --parameter-overrides "ID=1"
-            ARN=$(aws cloudformation list-exports --region us-west-2 --query "Exports[0].Value" --output text)
-            echo "ARN=$ARN"
-            curl -H "Content-Type: text/plain" -H "token: bade66f6-b826-4e77-9310-dfeddbd3aaed" --request PUT --data "$ARN" https://api.memstash.io/values/arn
-
-#  configure-infrastructure:
-
-  create_backend_infrastructure:
+              --template-file template.yml \
+              --stack-name superpowers
+      - run:
+          name: Ensure frontend infrastructure exist
+          command: |
+            aws cloudformation deploy \
+              --template-file frontend.yml \
+              --stack-name frontend
+  get_instance_ip:
+    environment:
+      ID: arns3
     docker:
       - image: amazon/aws-cli
     steps:
       - checkout
       - run:
-          name: Create Backend Infrastructure
+          name: Get the instance ip address for backend 
           command: |
-            aws cloudformation deploy \
-              --stack-name superpowers \
-              --template-file .circleci/files/backend.yml \
-              --region us-west-2 \
-              --parameter-overrides "ID=1"
-            PUBLIC_DNS=$(aws ec2 describe-instances --region us-west-2 --query "Reservations[*].Instances[0].PublicDnsName"  --output text)
-            echo "PUBLIC_DNS=$PUBLIC_DNS"
-            curl -H "Content-Type: text/plain" -H "token: bb9fa411-596b-45ef-ab32-8111e6af5491" --request PUT --data "$PUBLIC_DNS" https://api.memstash.io/values/public_dns
+            aws ec2 describe-instances \
+              --query 'Reservations[*].Instances[*].PublicIpAddress' \
+              --output text >> inventory
+      - run:
+          name: store the backend ip address to memstash so that frontend can use it. 
+          command: ./bkmemstash.sh       
 
-#  run-migrations:
+  configure_infrastructure:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - run: apk add --no-cache --upgrade bash
+      - run: apk --no-cache add curl
+      - run:
+          name: store the backend ip address to memstash so that frontend can use it. 
+          command: ./extract_ip_address.sh  
+     
+      - add_ssh_keys:
+          fingerprints: ["bb:52:30:ed:46:50:27:e5:bc:8d:54:2e:9e:fa:cf:d4"] # You can get this ID in the section where you registered the SSH Key    
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --update ansible && apk add openssh-client # install the dependencies needed for your playbook
+      - run:
+          name: Install openssh
+          command: |
+             apk add openssh-client # install the dependencies needed for your playbook ssh
+      - run:
+          name: Configure server
+          command: |
+            cd .circleci/ansible/ 
+            ansible-playbook  -i ~/project/inventory  main.yml
+  run_db_migrations:
+    docker:
+      - image: circleci/node:latest
+    steps:
+      - checkout
+      - run: cd backend && npm install
+      - run: 
+          name: Run database migrations 
+          no_output_timeout: 10m
+          command: |
+            cd backend && npm run migrations | tee migration_results.txt
+      - run:
+          name: Save result value
+          command: |
+            cd backend
+            if grep "executed successfully" migration_results.txt
+            then
+            curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID:0:8}" --request PUT --data "true" https://api.memstash.io/values/<< pipeline.id >>_migrations
+            else
+            curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID:0:8}" --request PUT --data "false" https://api.memstash.io/values/<< pipeline.id >>_migrations
+            fi
+  build_copy_bend_files:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - run: apk --no-cache add curl
+      - run: apk add --no-cache --upgrade bash
+      - run:
+          name: store the backend ip address to memstash so that frontend can use it. 
+          command: ./extract_ip_address.sh  
+     
+      - run:
+          name: Install npm
+          command: |
+            apk add --update npm
+      - run: cd backend && npm install
+      - run: cd backend && npm run build
+      - add_ssh_keys:
+          fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --update ansible # install the dependencies needed for your playbook
+      - run:
+          name: Install openssh
+          command: |
+             apk add openssh-client # install the dependencies needed for your playbook ssh
+      - run:
+          name: Copy files to server
+          no_output_timeout: 60m
+          command: |
+            cd .circleci/ansible/ 
+            ansible-playbook -i ~/project/inventory  copy_backend_playbook.yml
+  prepare_distribution_frontend_files_to_s3:
+    docker:
+      - image: python:3.7-alpine3.11
+    environment: 
+      ID: arns3
+    steps:
+      - checkout
+      - run: apk --no-cache add curl
+      - run: apk add --no-cache --upgrade bash
+      - run:
+          name: set the API_URL to environment so that frontend can burn it to the code on compile. 
+          command: |
+           source ./set_backendip_env.sh  
+     
 
-#  deploy-frontend:
-
-#  deploy-backend:  
-
-#  smoke-test:
-
-#  cloudfront-update:
-
+      - run:
+          name: Install npm
+          command: |
+            apk add --update npm
+      - run: cd frontend && npm install
+      - run: cd frontend && npm run build
+      - run:
+          name: Install awscli
+          command: |
+            pip3 install awscli 
+      - run: aws s3 cp frontend/dist s3://superpower-${ID}/ --recursive
+  run_smoke_test:
+    docker:
+      - image: python:3.7-alpine3.11
+    environment: 
+      ID: arns3
+    steps:
+      - checkout
+      - run: apk --no-cache add curl
+      - run:
+          name: set the API_URL to environment so that smoke test can be done to backend . 
+          command: |
+           source ./set_backendip_env.sh  
+     
+      - run:
+          name: Install awscli
+          command: |
+            pip3 install awscli 
+      - run:
+          name: smoke test frontend 
+          command: |
+            URL="http://superpower-${ID}.s3-website-${AWS_DEFAULT_REGION}.amazonaws.com/#/employees"            
+            if curl -s ${URL} | grep "Welcome"
+            then
+            return 1
+            else
+            return 0
+            fi 
+      - run:
+          name: smoke test for backend.
+          command: |
+            BACKEND_IP=$(aws ec2 describe-instances \
+            --query 'Reservations[*].Instances[*].PublicIpAddress' \
+            --output text)
+            curl "http://${BACKEND_IP}:3030/api/status"
+      - desctroystack
+  promote_to_production:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: promote newly deployed app to production 
+          command: |
+            cd ~/project/.circleci/files/
+              aws cloudformation deploy \
+                --template-file cloudfront.yml \
+                --stack-name cloudfront
+  #cleanup all the resources created. 
+  cleanup:
+    docker:
+      - image: amazon/aws-cli
+    environment: 
+      ID: arns3
+    steps:
+      - checkout
+      - run:
+          name: destroy and clear the s3 stack.
+          command: |
+            aws s3 rm s3://superpower-${ID} --recursive     
+      - run:
+          name: destroy and clear the backend stack resources.
+          command: |
+            aws cloudformation delete-stack --stack-name superpowers       
+      - run:
+          name: destroy and clear the frontend stack resources.
+          command: |
+            aws cloudformation delete-stack --stack-name frontend    
+      - run:
+          name: destroy and clear the cloudfront stack resources.
+          command: |
+            aws cloudformation delete-stack --stack-name cloudfront 
+          
 workflows:
-  backend:
-    jobs:
-      - build-backend
-      - test-backend:
-          requires:
-            - build-backend
-      - analyze-backend:
-          requires:
-            - test-backend
-      - create_backend_infrastructure:
-          requires:
-            - analyze-backend
+    build-compile-test:
+      jobs:
+        - checkout-code
+        - build-compile-fend:
+            requires:
+              - checkout-code    
+        - build-compile-bend:
+            requires:
+              - checkout-code
+        - compile-test-fend:
+            requires:
+              - build-compile-fend
+        - compile-test-bend:
+            requires:
+              - build-compile-bend
+        - check-vulnerability:
+            requires:
+              - compile-test-bend
+              - compile-test-fend
+        - create_infrastructure:
+            filters:
+              branches:
+                only: master
+            requires:
+              - check-vulnerability
+        - get_instance_ip:
+            filters:
+              branches:
+                only: master
 
-  frontend:
-    jobs:
-      - build-frontend
-      - test-frontend:
-          requires:
-            - build-frontend
-      - analyze-frontend:
-          requires:
-            - test-frontend
-      - create_frontend_infrastructure:
-          requires:
-            - analyze-frontend
+            requires:
+              - create_infrastructure
+        - configure_infrastructure:
+            filters:
+              branches:
+                only: master
+            requires:
+              - get_instance_ip
+        - run_db_migrations:
+            filters:
+              branches:
+                only: master
+            requires:
+              - configure_infrastructure
+        - build_copy_bend_files:
+            filters:
+              branches:
+                only: master
+            requires:
+              - run_db_migrations
+        - prepare_distribution_frontend_files_to_s3:
+            filters:
+              branches:
+                only: master
+        # - prepare_distribution_frontend_files_to_s3
+            requires:
+              - build_copy_bend_files
+        # - run_smoke_test:
+        #     requires:
+        #       - prepare_distribution_frontend_files_to_s3
+        - promote_to_production:
+            filters:
+              branches:
+                only: master
+            requires:
+              # - run_smoke_test
+              - prepare_distribution_frontend_files_to_s3
