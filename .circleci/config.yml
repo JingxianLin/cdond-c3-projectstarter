@@ -348,7 +348,8 @@ workflows:
                 only: master
 
             requires:
-              - create_infrastructure
+              - create_frontend_infrastructure
+              - create_backend_infrastructure
         - configure_infrastructure:
             filters:
               branches:
