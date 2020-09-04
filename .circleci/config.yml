@@ -64,8 +64,8 @@ jobs:
       NODE_OPTIONS=--max_old_space_size=8192
     steps:
       - checkout
-      - run: cd backend && npm audit --audit-level=critical
-      - run: cd frontend && npm audit --audit-level=critical
+      - run: cd backend && npm audit fix --audit-level=critical --force
+      - run: cd frontend && npm audit fix --audit-level=critical --force
   create_infrastructure:
     docker:
       - image: amazon/aws-cli
