@@ -135,7 +135,7 @@ jobs:
       - run: apk --no-cache add curl
       - run:
           name: store the backend ip address to memstash so that frontend can use it. 
-          command: ./extract_ip_address.sh  
+          command: source ./extract_ip_address.sh  
      
       - add_ssh_keys:
           fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key    
