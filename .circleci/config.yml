@@ -1,25 +1,48 @@
 version: 2.1
-
-### It's a good practice to keep your commands at the top of the config file. In this project, you'll need at least 2 commands:
-
-parameters:
-  build-image:
-    type: string
-    default: "circleci/node:13.8.0"
-
-# commands:
-#   destroy-environment:
-#     description: Destroy backend and frontend cloudformation stacks given a workflow ID.
-#     ...
-
-#   revert-migration:
-#     description: Revert the last migration if successfully run in the current workflow.
-#     ...
-
 orbs:
   node: circleci/node@3.0.1
+commands:
+  desctroystack:
 
+    description: "A very simple command for reverting and destroyong stack "
+    parameters:
+      to:
+        type: string
+        default: "superpowers"
+      front:
+        type: string
+        default: "frontend"
+    steps:
+      - run:
+          name: Delete s3 files
+          command: aws s3 rm s3://superpower-${arns3} --recursive
+          when: on_fail
+      - run:
+          name: Delete current stacks
+          command: |
+            aws cloudformation delete-stack --stack-name  << parameters.to >>
+            aws cloudformation delete-stack --stack-name  << parameters.front >>
+          when: on_fail
+      - run:
+          name: Revert last Migration
+          command: |
+            VALUE=$(curl -H "token: ${CIRCLE_WORKFLOW_ID:0:8}" --request GET https://api.memstash.io/values/<< pipeline.id >>_migrations)
+            if $VALUE == "true"
+            then
+            cd ./backend
+            echo "Reverting migrations"
+            npm run migrations:revert
+            else 
+            echo "No migration occured"
+            fi
+          when: on_fail
 jobs:
+  hello-world:
+    docker: 
+      - image: circleci/node:latest # the primary container, where your job's commands are run
+    steps:
+      - checkout # check out the code in the project directory
+      - run: echo "Hello World" # run the `echo` command
 
   checkout-code:
     executor:
@@ -64,43 +87,8 @@ jobs:
       NODE_OPTIONS=--max_old_space_size=8192
     steps:
       - checkout
-      - run: cd backend && npm install && npm audit fix --audit-level=critical --force
-      - run: cd frontend && npm install && npm audit fix --audit-level=critical --force
-  create_frontend_infrastructure:
-    docker:
-      - image: amazon/aws-cli
-    steps:
-      - checkout
-      - run:
-          name: Create Frontend Infrastructure
-          command: |
-            aws cloudformation deploy \
-              --stack-name superpowers \
-              --template-file .circleci/files/frontend.yml \
-              --region us-west-2 \
-              --parameter-overrides "ID=1"
-            ARN=$(aws cloudformation list-exports --region us-west-2 --query "Exports[0].Value" --output text)
-            echo "ARN=$ARN"
-            curl -H "Content-Type: text/plain" -H "token: bade66f6-b826-4e77-9310-dfeddbd3aaed" --request PUT --data "$ARN" https://api.memstash.io/values/arn
-
-#  configure-infrastructure:
-
-  create_backend_infrastructure:
-    docker:
-      - image: amazon/aws-cli
-    steps:
-      - checkout
-      - run:
-          name: Create Backend Infrastructure
-          command: |
-            aws cloudformation deploy \
-              --stack-name superpowers \
-              --template-file .circleci/files/backend.yml \
-              --region us-west-2 \
-              --parameter-overrides "ID=1"
-            PUBLIC_DNS=$(aws ec2 describe-instances --region us-west-2 --query "Reservations[*].Instances[0].PublicDnsName"  --output text)
-            echo "PUBLIC_DNS=$PUBLIC_DNS"
-            curl -H "Content-Type: text/plain" -H "token: bb9fa411-596b-45ef-ab32-8111e6af5491" --request PUT --data "$PUBLIC_DNS" https://api.memstash.io/values/public_dns
+      - run: cd backend && npm audit --audit-level=critical
+      - run: cd frontend && npm audit --audit-level=critical
   create_infrastructure:
     docker:
       - image: amazon/aws-cli
@@ -110,14 +98,17 @@ jobs:
           name: Ensure backend infrastructure exist
           command: |
             aws cloudformation deploy \
-              --template-file template.yml \
-              --stack-name superpowers
+              --template-file .circleci/files/backend.yml \
+              --stack-name superpowers \
+              --tags project=udapeople
       - run:
           name: Ensure frontend infrastructure exist
           command: |
             aws cloudformation deploy \
               --template-file frontend.yml \
               --stack-name frontend
+
+
   get_instance_ip:
     environment:
       ID: arns3
@@ -133,12 +124,7 @@ jobs:
               --output text >> inventory
       - run:
           name: store the backend ip address to memstash so that frontend can use it. 
-          command: |
-            ipaddress=$( tail -n 1 inventory )
-            echo $ipaddress
-            curl -H "Content-Type: text/plain" -H "token: bb9fa411-596b-45ef-ab32-8111e6af5491" --request PUT --data $ipaddress https://api.memstash.io/values/backend
-
-            curl -H "Content-Type:text/plain" -H "token:bade66f6-b826-4e77-9310-dfeddbd3aaed" --request PUT --data "arn:aws:s3:::superpower-${ID}" https://api.memstash.io/values/frontend
+          command: ./bkmemstash.sh       
 
   configure_infrastructure:
     docker:
@@ -149,13 +135,10 @@ jobs:
       - run: apk --no-cache add curl
       - run:
           name: store the backend ip address to memstash so that frontend can use it. 
-          command:  |
-            ip=$(curl -H "token: bb9fa411-596b-45ef-ab32-8111e6af5491" --request GET https://api.memstash.io/values/backend )
-            echo "[all]" > inventory
-            echo  "${ip} ansible_user=ubuntu" >> inventory  
+          command: ./extract_ip_address.sh  
      
       - add_ssh_keys:
-          fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key    
+          fingerprints: ["bb:52:30:ed:46:50:27:e5:bc:8d:54:2e:9e:fa:cf:d4"] # You can get this ID in the section where you registered the SSH Key    
       - run:
           name: Install dependencies
           command: |
@@ -164,11 +147,13 @@ jobs:
           name: Install openssh
           command: |
              apk add openssh-client # install the dependencies needed for your playbook ssh
+
       - run:
           name: Configure server
           command: |
             cd .circleci/ansible/ 
-            sudo ansible-playbook  -i ~/project/inventory  main.yml
+            ansible-playbook  -i ~/project/inventory  main.yml
+
   run_db_migrations:
     docker:
       - image: circleci/node:latest
@@ -199,10 +184,8 @@ jobs:
       - run: apk add --no-cache --upgrade bash
       - run:
           name: store the backend ip address to memstash so that frontend can use it. 
-          command: |
-            ip=$(curl -H "token: bb9fa411-596b-45ef-ab32-8111e6af5491" --request GET https://api.memstash.io/values/backend )
-            echo "[all]" > inventory
-            echo  "${ip} ansible_user=ubuntu" >> inventory     
+          command: ./extract_ip_address.sh  
+     
       - run:
           name: Install npm
           command: |
@@ -210,7 +193,7 @@ jobs:
       - run: cd backend && npm install
       - run: cd backend && npm run build
       - add_ssh_keys:
-          fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key
+          fingerprints: ["bb:52:30:ed:46:50:27:e5:bc:8d:54:2e:9e:fa:cf:d4"] # You can get this ID in the section where you registered the SSH Key
       - run:
           name: Install dependencies
           command: |
@@ -219,12 +202,14 @@ jobs:
           name: Install openssh
           command: |
              apk add openssh-client # install the dependencies needed for your playbook ssh
+
       - run:
           name: Copy files to server
           no_output_timeout: 60m
           command: |
             cd .circleci/ansible/ 
             ansible-playbook -i ~/project/inventory  copy_backend_playbook.yml
+
   prepare_distribution_frontend_files_to_s3:
     docker:
       - image: python:3.7-alpine3.11
@@ -244,6 +229,7 @@ jobs:
           name: Install npm
           command: |
             apk add --update npm
+
       - run: cd frontend && npm install
       - run: cd frontend && npm run build
       - run:
@@ -285,6 +271,7 @@ jobs:
             --query 'Reservations[*].Instances[*].PublicIpAddress' \
             --output text)
             curl "http://${BACKEND_IP}:3030/api/status"
+
       - desctroystack
   promote_to_production:
     docker:
@@ -324,6 +311,10 @@ jobs:
             aws cloudformation delete-stack --stack-name cloudfront 
           
 workflows:
+    # hello-world:
+    #   jobs:
+    #     - hello-world
+    #     # - create_infrastructure
     build-compile-test:
       jobs:
         - checkout-code
@@ -343,13 +334,10 @@ workflows:
             requires:
               - compile-test-bend
               - compile-test-fend
-        - create_frontend_infrastructure:
+        - create_infrastructure:
             filters:
               branches:
                 only: master
-            requires:
-              - check-vulnerability
-        - create_backend_infrastructure:
             requires:
               - check-vulnerability
         - get_instance_ip:
@@ -358,8 +346,7 @@ workflows:
                 only: master
 
             requires:
-              - create_frontend_infrastructure
-              - create_backend_infrastructure
+              - create_infrastructure
         - configure_infrastructure:
             filters:
               branches:
@@ -395,3 +382,9 @@ workflows:
             requires:
               # - run_smoke_test
               - prepare_distribution_frontend_files_to_s3
+        # - cleanup:
+        #     filters:
+        #       branches:
+        #         only: master
+        #     requires:
+        #       - promote_to_production
