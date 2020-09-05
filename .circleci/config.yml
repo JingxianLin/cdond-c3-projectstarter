@@ -184,7 +184,7 @@ jobs:
       - run: apk add --no-cache --upgrade bash
       - run:
           name: store the backend ip address to memstash so that frontend can use it. 
-          command: ./extract_ip_address.sh  
+          command: source ./extract_ip_address.sh  
      
       - run:
           name: Install npm
