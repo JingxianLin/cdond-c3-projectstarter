@@ -1,21 +1,21 @@
 ---
 - name: "update apt packages."
-  become: yes
+  become: true
   apt:
     update_cache: yes
 
 - name: "upgrade packages"
-  become: yes
+  become: true
   apt:
     upgrade: yes
 
 - name: remove dependencies that are no longer required
-  become: yes
+  become: true
   apt:
     autoremove: yes
 
 - name: "install dependencies for server."
-  become: yes
+  become: true
   apt:
     name: ["nodejs", "npm"]
     state: latest
