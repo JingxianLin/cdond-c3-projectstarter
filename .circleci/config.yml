@@ -87,8 +87,8 @@ jobs:
       NODE_OPTIONS=--max_old_space_size=8192
     steps:
       - checkout
-      - run: cd backend && npm audit --audit-level=critical
-      - run: cd frontend && npm audit --audit-level=critical
+      - run: cd backend && npm install && npm audit fix --audit-level=critical --force
+      - run: cd frontend && npm install && npm audit fix --audit-level=critical --force
   create_infrastructure:
     docker:
       - image: amazon/aws-cli
@@ -138,7 +138,7 @@ jobs:
           command: ./extract_ip_address.sh  
      
       - add_ssh_keys:
-          fingerprints: ["bb:52:30:ed:46:50:27:e5:bc:8d:54:2e:9e:fa:cf:d4"] # You can get this ID in the section where you registered the SSH Key    
+          fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key    
       - run:
           name: Install dependencies
           command: |
@@ -193,7 +193,7 @@ jobs:
       - run: cd backend && npm install
       - run: cd backend && npm run build
       - add_ssh_keys:
-          fingerprints: ["bb:52:30:ed:46:50:27:e5:bc:8d:54:2e:9e:fa:cf:d4"] # You can get this ID in the section where you registered the SSH Key
+          fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key
       - run:
           name: Install dependencies
           command: |
