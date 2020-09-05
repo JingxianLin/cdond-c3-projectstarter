@@ -149,7 +149,10 @@ jobs:
       - run: apk --no-cache add curl
       - run:
           name: store the backend ip address to memstash so that frontend can use it. 
-          command: ./extract_ip_address.sh  
+          command:  |
+            ip=$(curl -H "token: bb9fa411-596b-45ef-ab32-8111e6af5491" --request GET https://api.memstash.io/values/backend )
+            echo "[all]" > inventory
+            echo  "${ip} ansible_user=ubuntu" >> inventory  
      
       - add_ssh_keys:
           fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key    
@@ -196,8 +199,10 @@ jobs:
       - run: apk add --no-cache --upgrade bash
       - run:
           name: store the backend ip address to memstash so that frontend can use it. 
-          command: ./extract_ip_address.sh  
-     
+          command: |
+            ip=$(curl -H "token: bb9fa411-596b-45ef-ab32-8111e6af5491" --request GET https://api.memstash.io/values/backend )
+            echo "[all]" > inventory
+            echo  "${ip} ansible_user=ubuntu" >> inventory     
       - run:
           name: Install npm
           command: |
