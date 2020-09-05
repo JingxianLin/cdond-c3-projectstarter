@@ -124,7 +124,7 @@ jobs:
               --output text >> inventory
       - run:
           name: store the backend ip address to memstash so that frontend can use it. 
-          command: ./bkmemstash.sh       
+          command: source ./bkmemstash.sh       
 
   configure_infrastructure:
     docker:
