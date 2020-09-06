@@ -236,7 +236,7 @@ jobs:
           name: Install awscli
           command: |
             pip3 install awscli 
-      - run: aws s3 cp frontend/dist s3://superpower-${ID}/ --recursive
+      - run: aws s3 cp frontend/dist s3://superpower-1/ --recursive
   run_smoke_test:
     docker:
       - image: python:3.7-alpine3.11
