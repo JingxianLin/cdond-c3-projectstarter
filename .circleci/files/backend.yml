@@ -28,7 +28,7 @@ Resources:
       InstanceType: t2.micro
       SecurityGroups:
         - Ref: InstanceSecurityGroup
-      KeyName: cdond_test # Make sure this is the same name for your saved Key Pair in AWS EC2.
+      KeyName: udacity # Make sure this is the same name for your saved Key Pair in AWS EC2.
       ImageId: ami-068663a3c619dd892
       Tags:
         - Key: Name
