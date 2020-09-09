@@ -106,7 +106,7 @@ jobs:
           command: |
             aws cloudformation deploy \
               --template-file frontend.yml \
-              --stack-name frontend
+              --stack-name superpowers
 
 
   get_instance_ip:
