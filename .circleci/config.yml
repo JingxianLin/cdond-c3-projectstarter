@@ -88,7 +88,7 @@ jobs:
     steps:
       - checkout
       - run: cd backend && npm audit fix --audit-level=critical --force
-      - run: cd frontend && npm audit fix --audit-level=critical --force
+      - run: cd frontend && npm install && npm audit fix --audit-level=critical --force
   create_infrastructure:
     docker:
       - image: amazon/aws-cli
