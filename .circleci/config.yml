@@ -1,390 +1,359 @@
 version: 2.1
-orbs:
-  node: circleci/node@3.0.1
+
+#============================================================
+# A reference to filter builds only to the master and feature
+# branches.
+#============================================================
+
+filter_builds: &filter_builds
+  filters:
+    branches:
+      only:
+        - master
+
 commands:
-  desctroystack:
-
-    description: "A very simple command for reverting and destroyong stack "
+  install-dependencies:
+    description: "Install dependencies for the given application layer (frontend/backend)"
     parameters:
-      to:
+      layer:
         type: string
-        default: "superpowers"
-      front:
-        type: string
-        default: "frontend"
     steps:
       - run:
-          name: Delete s3 files
-          command: aws s3 rm s3://superpower-${arns3} --recursive
-          when: on_fail
-      - run:
-          name: Delete current stacks
+          name: Install << parameters.layer >> dependencies
           command: |
-            aws cloudformation delete-stack --stack-name  << parameters.to >>
-            aws cloudformation delete-stack --stack-name  << parameters.front >>
-          when: on_fail
-      - run:
-          name: Revert last Migration
-          command: |
-            VALUE=$(curl -H "token: ${CIRCLE_WORKFLOW_ID:0:8}" --request GET https://api.memstash.io/values/<< pipeline.id >>_migrations)
-            if $VALUE == "true"
-            then
-            cd ./backend
-            echo "Reverting migrations"
-            npm run migrations:revert
-            else 
-            echo "No migration occured"
-            fi
-          when: on_fail
+            cd << parameters.layer >>
+            npm i
+      - slack/notify-on-failure
+
+orbs:
+  slack: circleci/slack@3.4.2
+  aws-cli: circleci/aws-cli@1.2.1
+
 jobs:
-  hello-world:
-    docker: 
-      - image: circleci/node:latest # the primary container, where your job's commands are run
-    steps:
-      - checkout # check out the code in the project directory
-      - run: echo "Hello World" # run the `echo` command
-
-  checkout-code:
-    executor:
-      name: node/default
-    steps:
-      - checkout
-      - run: npm install
-  build-compile-fend:
-    executor:
-      name: node/default
-    steps:
-      - checkout
-      - run: cd frontend && npm install
-      - run: cd frontend && npm run build
-  build-compile-bend:
-    executor:
-      name: node/default
-    steps:
-      - checkout
-      - run: cd backend && npm install
-      - run: cd backend && npm run build
-  compile-test-bend:
-    executor:
-      name: node/default
-    steps:
-      - checkout
-      - run: cd backend && npm install
-      - run: cd backend && npm test
-  compile-test-fend:
-    executor:
-      name: node/default
-    environment: 
-      NODE_OPTIONS=--max_old_space_size=8192
-    steps:
-      - checkout
-      - run: cd frontend && npm install
-      - run: cd frontend && npm test
-  check-vulnerability:
-    executor:
-      name: node/default
-    environment: 
-      NODE_OPTIONS=--max_old_space_size=8192
-    steps:
-      - checkout
-      - run: cd backend && npm install && npm audit fix --audit-level=critical --force
-      - run: cd frontend && npm install && npm audit fix --audit-level=critical --force
-  create_infrastructure:
+  build-backend:
     docker:
-      - image: amazon/aws-cli
+      - image: cimg/node:lts
     steps:
       - checkout
+      - install-dependencies:
+          layer: "backend"
       - run:
-          name: Ensure backend infrastructure exist
-          command: |
-            aws cloudformation deploy \
-              --template-file .circleci/files/backend.yml \
-              --stack-name superpowers \
-              --tags project=udapeople
-      - run:
-          name: Ensure frontend infrastructure exist
-          command: |
-            aws cloudformation deploy \
-              --template-file .circleci/files/frontend.yml \
-              --stack-name superpowers
-
-
-  get_instance_ip:
-    environment:
-      ID: arns3
-    docker:
-      - image: amazon/aws-cli
-    steps:
-      - checkout
-      - run:
-          name: Get the instance ip address for backend 
-          command: |
-            aws ec2 describe-instances \
-              --query 'Reservations[*].Instances[*].PublicIpAddress' \
-              --output text >> inventory
-      - run:
-          name: store the backend ip address to memstash so that frontend can use it. 
-          command: ./bkmemstash.sh       
-
-  configure_infrastructure:
-    docker:
-      - image: python:3.7-alpine3.11
-    steps:
-      - checkout
-      - run: apk add --no-cache --upgrade bash
-      - run: apk --no-cache add curl
-      - run:
-          name: store the backend ip address to memstash so that frontend can use it. 
-          command: ./extract_ip_address.sh  
-     
-      - add_ssh_keys:
-          fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key    
-      - run:
-          name: Install dependencies
-          command: |
-            apk add --update ansible && apk add openssh-client # install the dependencies needed for your playbook
-      - run:
-          name: Install openssh
-          command: |
-             apk add openssh-client # install the dependencies needed for your playbook ssh
-
-      - run:
-          name: Configure server
-          command: |
-            cd .circleci/ansible/ 
-            ansible-playbook  -i ~/project/inventory  main.yml
-
-  run_db_migrations:
-    docker:
-      - image: circleci/node:latest
-    steps:
-      - checkout
-      - run: cd backend && npm install
-      - run: 
-          name: Run database migrations 
-          no_output_timeout: 10m
-          command: |
-            cd backend && npm run migrations | tee migration_results.txt
-      - run:
-          name: Save result value
+          name: Build Backend
           command: |
             cd backend
-            if grep "executed successfully" migration_results.txt
-            then
-            curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID:0:8}" --request PUT --data "true" https://api.memstash.io/values/<< pipeline.id >>_migrations
-            else
-            curl -H "Content-Type: text/plain" -H "token: ${CIRCLE_WORKFLOW_ID:0:8}" --request PUT --data "false" https://api.memstash.io/values/<< pipeline.id >>_migrations
-            fi
-  build_copy_bend_files:
+            npm run build
+      - run:
+          name: save back end build
+          command: |
+            mkdir /tmp/workspace
+            cp ./backend/package.json /tmp/workspace/
+            cd backend/dist
+            tar -zcvf /tmp/workspace/backend.tar.gz ./
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - backend.tar.gz
+            - package.json
+      - slack/notify-on-failure
+
+  build-frontend:
     docker:
-      - image: python:3.7-alpine3.11
+      - image: cimg/node:lts
     steps:
       - checkout
-      - run: apk --no-cache add curl
-      - run: apk add --no-cache --upgrade bash
+      - install-dependencies:
+          layer: "frontend"
       - run:
-          name: store the backend ip address to memstash so that frontend can use it. 
-          command: ./extract_ip_address.sh  
-     
-      - run:
-          name: Install npm
+          name: Build Frontend
           command: |
-            apk add --update npm
-      - run: cd backend && npm install
-      - run: cd backend && npm run build
+            cd frontend
+            npm run build
+      - slack/notify-on-failure
+
+  test-backend:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - checkout
+      - install-dependencies:
+          layer: "backend"
+      - run:
+          name: Unit Test Backend
+          command: |
+            cd backend
+            mkdir -p ./reports/junit/
+            npm run test:report
+          environment:
+            JEST_JUNIT_OUTPUT_DIR: "./reports/junit/"
+      - store_test_results:
+          path: ./backend/reports/junit/
+      - slack/notify-on-failure
+
+  test-frontend:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - checkout
+      - install-dependencies:
+          layer: "frontend"
+      - run:
+          name: Unit Test Frontend
+          command: |
+            cd frontend
+            mkdir -p ./reports/junit/
+            npm run test:report
+          environment:
+            JEST_JUNIT_OUTPUT_DIR: "./reports/junit/"
+      - store_test_results:
+          path: ./frontend/reports/junit/
+      - slack/notify-on-failure
+
+  audit-backend-dependencies:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - checkout
+      - install-dependencies:
+          layer: "backend"
+      - run:
+          name: Audit backend Dependencies
+          command: |
+            cd backend
+            npm audit --audit-level=critical
+      - slack/notify-on-failure
+
+  audit-frontend-dependencies:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - checkout
+      - install-dependencies:
+          layer: "frontend"
+      - run:
+          name: Audit frontend dependencies
+          command: |
+            cd frontend
+            npm audit --audit-level=critical
+      - slack/notify-on-failure
+
+  create-infra-backend:
+    executor: aws-cli/default
+    steps:
+      - checkout
+      - aws-cli/setup:
+          profile-name: default
+      - run:
+          name: Create Infra Backend
+          command: |
+            aws cloudformation deploy --template-file .circleci/files/backend.yml \
+              --stack-name "backend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --parameter-overrides ID="deployment-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --tags project=udacity
+      - run:
+          name: save backend instance public url
+          command: |
+            mkdir /tmp/workspace
+            aws ec2 describe-instances --filters "Name=tag-value,Values=backend-deployment-${CIRCLE_WORKFLOW_ID:0:7}" \
+             --query "Reservations[*].Instances[*].[PublicDnsName]" --output text > /tmp/workspace/backend_url.txt
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - backend_url.txt
+
+      - run:
+          name: describe events on failure
+          command: |
+            aws cloudformation describe-stack-events --stack-name "backend-${CIRCLE_WORKFLOW_ID:0:7}"
+          when: on_fail
+
+  migrate-db:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - checkout
+      - install-dependencies:
+          layer: "backend"
+      - run:
+          name: Migrate DB
+          command: |
+            mkdir /tmp/workspace
+            cd backend
+            npm run migrations | tee /tmp/workspace/db-migration-log.txt
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - db-migration-log.txt
+      - slack/notify-on-failure
+
+  deploy-backend:
+    docker:
+      - image: alpine:latest
+    steps:
+      - checkout
       - add_ssh_keys:
-          fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"] # You can get this ID in the section where you registered the SSH Key
+          fingerprints: ["	f1:b6:04:ba:fe:3b:33:da:2a:62:24:c1:bf:23:3f:d2"]
+      - attach_workspace:
+          at: /tmp/workspace
       - run:
-          name: Install dependencies
+          name: Install Ansible & playbook dependencies
           command: |
-            apk add --update ansible # install the dependencies needed for your playbook
+            apk add --update ansible
+            ansible-galaxy install weareinteractive.environment
       - run:
-          name: Install openssh
+          name: Create ansible inventory
           command: |
-             apk add openssh-client # install the dependencies needed for your playbook ssh
+            echo "[backend]" > .circleci/ansible/inventory.txt
+            cat /tmp/workspace/backend_url.txt >> .circleci/ansible/inventory.txt
+            echo .circleci/ansible/inventory.txt
+      - run:
+          name: run ansible
+          command: |
+            cd .circleci/ansible/
+            ansible-playbook -i inventory.txt playbook.yml
 
-      - run:
-          name: Copy files to server
-          no_output_timeout: 60m
-          command: |
-            cd .circleci/ansible/ 
-            ansible-playbook -i ~/project/inventory  copy_backend_playbook.yml
-
-  prepare_distribution_frontend_files_to_s3:
-    docker:
-      - image: python:3.7-alpine3.11
-    environment: 
-      ID: arns3
+  create-infra-frontend:
+    executor: aws-cli/default
     steps:
       - checkout
-      - run: apk --no-cache add curl
-      - run: apk add --no-cache --upgrade bash
+      - aws-cli/setup:
+          profile-name: default
+      - run: mkdir /tmp/workspace
       - run:
-          name: set the API_URL to environment so that frontend can burn it to the code on compile. 
+          name: save old bucket arn
+          command: echo "arn:aws:s3:::`aws s3 ls | awk '{ print $3 } ' | grep udapeople-frontend-deployment`" > /tmp/workspace/old_s3arn.txt
+      - run:
+          name: Create Infra frontend
           command: |
-           source ./set_backendip_env.sh  
-     
+            aws cloudformation deploy --template-file .circleci/files/frontend.yml \
+              --stack-name "frontend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --parameter-overrides ID="frontend-deployment-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --tags project=udacity
+      - run:
+          name: describe events on failure
+          command: |
+            aws cloudformation describe-stack-events --stack-name "frontend-${CIRCLE_WORKFLOW_ID:0:7}"
+          when: on_fail
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - old_s3arn.txt
 
+  deploy-build-frontend:
+    docker:
+      - image: cimg/node:lts
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - checkout
+      - install-dependencies:
+          layer: "frontend"
       - run:
-          name: Install npm
+          name: Build Frontend
           command: |
-            apk add --update npm
+            export API_URL=http://`cat /tmp/workspace/backend_url.txt`:3030
+            cd frontend            
+            npm run build
+      - run:
+          name: save front build
+          command: |
+            cd frontend/dist
+            tar -zcvf /tmp/workspace/frontend.tar.gz ./
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - frontend.tar.gz
+      - slack/notify-on-failure
 
-      - run: cd frontend && npm install
-      - run: cd frontend && npm run build
-      - run:
-          name: Install awscli
-          command: |
-            pip3 install awscli 
-      - run: aws s3 cp frontend/dist s3://superpower-${ID}/ --recursive
-  run_smoke_test:
-    docker:
-      - image: python:3.7-alpine3.11
-    environment: 
-      ID: arns3
+  deploy-copy-frontend:
+    executor: aws-cli/default
     steps:
-      - checkout
-      - run: apk --no-cache add curl
+      - aws-cli/setup:
+          profile-name: default
+      - attach_workspace:
+          at: /tmp/workspace
       - run:
-          name: set the API_URL to environment so that smoke test can be done to backend . 
+          name: decompress frontend
           command: |
-           source ./set_backendip_env.sh  
-     
+            echo `ls /tmp/workspace`
+            mkdir ~/frontend
+            cp /tmp/workspace/frontend.tar.gz ~/frontend
+            cd ~/frontend
+            tar -zxvf frontend.tar.gz
+            echo `ls -la`
       - run:
-          name: Install awscli
+          name: deploy to s3 bucket
           command: |
-            pip3 install awscli 
-      - run:
-          name: smoke test frontend 
-          command: |
-            URL="http://superpower-${ID}.s3-website-us-west-2.amazonaws.com/#/employees"            
-            if curl -s ${URL} | grep "Welcome"
-            then
-            return 1
-            else
-            return 0
-            fi 
-      - run:
-          name: smoke test for backend.
-          command: |
-            BACKEND_IP=$(aws ec2 describe-instances \
-            --query 'Reservations[*].Instances[*].PublicIpAddress' \
-            --output text)
-            curl "http://${BACKEND_IP}:3030/api/status"
+            cd ~/frontend
+            aws s3 sync . s3://udapeople-frontend-deployment-${CIRCLE_WORKFLOW_ID:0:7}
 
-      - desctroystack
-  promote_to_production:
-    docker:
-      - image: amazon/aws-cli
-    steps:
-      - checkout
-      - run:
-          name: promote newly deployed app to production 
-          command: |
-            cd ~/project/.circleci/files/
-              aws cloudformation deploy \
-                --template-file cloudfront.yml \
-                --stack-name cloudfront
-  #cleanup all the resources created. 
-  cleanup:
-    docker:
-      - image: amazon/aws-cli
-    environment: 
-      ID: arns3
-    steps:
-      - checkout
-      - run:
-          name: destroy and clear the s3 stack.
-          command: |
-            aws s3 rm s3://superpower-${ID} --recursive     
-      - run:
-          name: destroy and clear the backend stack resources.
-          command: |
-            aws cloudformation delete-stack --stack-name superpowers       
-      - run:
-          name: destroy and clear the frontend stack resources.
-          command: |
-            aws cloudformation delete-stack --stack-name frontend    
-      - run:
-          name: destroy and clear the cloudfront stack resources.
-          command: |
-            aws cloudformation delete-stack --stack-name cloudfront 
-          
+  smokeTest-frontend:
+      docker:
+        - image: alpine:latest
+      steps:
+        - run:
+            name: install curl
+            command: apk add curl
+        - run:
+            name: smoke test front end
+            command: |
+              URL="http://udapeople-frontend-deployment-${CIRCLE_WORKFLOW_ID:0:7}.s3-website-us-west-2.amazonaws.com/#/employees"              
+              if curl -s ${URL} | grep "Welcome"; then return 0; else return 1 ; fi
+
+  smokeTest-backend:
+      docker:
+          - image: alpine:latest
+      steps:
+          - attach_workspace:
+              at: /tmp/workspace
+          - run: apk add curl
+          - run: 
+              name: smoke test backend
+              command: |
+                curl -m 20 "http://`cat /tmp/workspace/backend_url.txt`:3030/api/status"
+
 workflows:
-    # hello-world:
-    #   jobs:
-    #     - hello-world
-    #     # - create_infrastructure
-    build-compile-test:
-      jobs:
-        - checkout-code
-        - build-compile-fend:
-            requires:
-              - checkout-code    
-        - build-compile-bend:
-            requires:
-              - checkout-code
-        - compile-test-fend:
-            requires:
-              - build-compile-fend
-        - compile-test-bend:
-            requires:
-              - build-compile-bend
-        - check-vulnerability:
-            requires:
-              - compile-test-bend
-              - compile-test-fend
-        - create_infrastructure:
-            filters:
-              branches:
-                only: master
-            requires:
-              - check-vulnerability
-        - get_instance_ip:
-            filters:
-              branches:
-                only: master
-
-            requires:
-              - create_infrastructure
-        - configure_infrastructure:
-            filters:
-              branches:
-                only: master
-            requires:
-              - get_instance_ip
-        - run_db_migrations:
-            filters:
-              branches:
-                only: master
-            requires:
-              - configure_infrastructure
-        - build_copy_bend_files:
-            filters:
-              branches:
-                only: master
-            requires:
-              - run_db_migrations
-        - prepare_distribution_frontend_files_to_s3:
-            filters:
-              branches:
-                only: master
-        # - prepare_distribution_frontend_files_to_s3
-            requires:
-              - build_copy_bend_files
-        # - run_smoke_test:
-        #     requires:
-        #       - prepare_distribution_frontend_files_to_s3
-        - promote_to_production:
-            filters:
-              branches:
-                only: master
-            requires:
-              # - run_smoke_test
-              - prepare_distribution_frontend_files_to_s3
-        # - cleanup:
-        #     filters:
-        #       branches:
-        #         only: master
-        #     requires:
-        #       - promote_to_production
+  default:
+    jobs:
+      - build-frontend
+      - build-backend
+      - test-backend
+      - test-frontend
+      - audit-backend-dependencies
+      - audit-frontend-dependencies
+      - create-infra-backend:
+          requires:
+            - build-frontend
+            - build-backend
+            - test-frontend
+            - test-backend
+            - audit-backend-dependencies
+            - audit-frontend-dependencies
+      - create-infra-frontend:
+          requires:
+            - build-frontend
+            - build-backend
+            - test-frontend
+            - test-backend
+            - audit-backend-dependencies
+            - audit-frontend-dependencies
+      - deploy-backend:
+          requires: 
+            - create-infra-backend
+            - build-backend
+      - migrate-db:
+          requires:
+            - deploy-backend
+      - deploy-build-frontend:
+          requires:
+            - create-infra-backend
+      - deploy-copy-frontend:
+          requires:
+            - deploy-build-frontend
+            - create-infra-frontend
+            - migrate-db
+      - smokeTest-frontend:
+          requires:
+              - deploy-copy-frontend
+      - smokeTest-backend:
+          requires:
+            - deploy-backend
