@@ -87,7 +87,7 @@ jobs:
       NODE_OPTIONS=--max_old_space_size=8192
     steps:
       - checkout
-      - run: cd backend && npm audit fix --audit-level=critical --force
+      - run: cd backend && npm install && npm audit fix --audit-level=critical --force
       - run: cd frontend && npm install && npm audit fix --audit-level=critical --force
   create_infrastructure:
     docker:
