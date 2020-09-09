@@ -25,7 +25,7 @@ Resources:
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t2.micro
+      InstanceType: t3.micro
       SecurityGroups:
         - Ref: InstanceSecurityGroup
       KeyName: udacity # Make sure this is the same name for your saved Key Pair in AWS EC2.
