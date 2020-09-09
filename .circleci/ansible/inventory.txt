@@ -1,1 +1,2 @@
-[web]
+[all]
+13.245.17.23 ansible_user=ubuntu

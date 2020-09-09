@@ -1,25 +1,16 @@
----
+- name: Creates directory
+  become: true
+  file:
+    path: /etc/project
+    state: directory
+- name: "move backend files to server."
+  become: true
+  copy:
+    src: /root/project/backend/dist
+    dest: /etc/project
+    mode: '0777'
 
-- name: "extract artifact."
-  unarchive:
-    src: /root/project/artifact.tar.gz
-    dest: /home/ubuntu/
-
-- name: "stop app."
-  shell: pm2 stop default
-  ignore_errors: yes
-
-- name: "start app."
-  environment: 
-    TYPEORM_HOST: "{{ lookup('env', 'TYPEORM_HOST') }}" 
-    TYPEORM_PORT: "{{ lookup('env', 'TYPEORM_PORT') }}" 
-    TYPEORM_USERNAME: "{{ lookup('env', 'TYPEORM_USERNAME') }}" 
-    TYPEORM_PASSWORD: "{{ lookup('env', 'TYPEORM_PASSWORD') }}" 
-    TYPEORM_DATABASE: "{{ lookup('env', 'TYPEORM_DATABASE') }}" 
-    TYPEORM_CONNECTION: "{{ lookup('env', 'TYPEORM_CONNECTION') }}"
-    TYPEORM_ENTITIES: "./src/modules/**/*.entity.ts"
-    TYPEORM_MIGRATIONS: "./src/migrations/*.ts"
-
+- name: Executing node
+  become: true
   shell: |
-    npm install
-    pm2 start npm -- start
+    pm2 start /etc/project/dist/main.js -f 
