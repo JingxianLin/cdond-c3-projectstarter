@@ -105,7 +105,7 @@ jobs:
           name: Ensure frontend infrastructure exist
           command: |
             aws cloudformation deploy \
-              --template-file frontend.yml \
+              --template-file .circleci/files/frontend.yml \
               --stack-name superpowers
 
 
