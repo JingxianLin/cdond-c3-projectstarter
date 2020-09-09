@@ -160,7 +160,7 @@ jobs:
           paths:
             - project/.circleci/ansible/inventory.txt
       - destroy-environment:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"        
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"        
 
   configure-infrastructure:
     docker:
@@ -182,7 +182,7 @@ jobs:
             cd .circleci/ansible
             ansible-playbook -i inventory.txt configure-server.yml
       - destroy-environment:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"        
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"        
 
   run-migrations:
     docker:
@@ -205,7 +205,7 @@ jobs:
               curl -H "Content-Type: text/plain" -H "token: e52b52de-ee26-41a5-86e8-e8dcc3d995a5" --request PUT --data "1" https://api.memstash.io/values/migration_${CIRCLE_WORKFLOW_ID:0:7}
             fi
       - destroy-environment:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"        
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"        
 
   deploy-frontend:
     docker:
@@ -237,9 +237,9 @@ jobs:
             tar -czvf artifact-"${CIRCLE_WORKFLOW_ID:0:7}".tar.gz dist
             aws s3 sync . s3://udapeople-"${CIRCLE_WORKFLOW_ID:0:7}" --delete
       - destroy-environment:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"        
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"        
       - revert_migration:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"
                     
   deploy-backend:
     docker:
@@ -262,9 +262,9 @@ jobs:
             cd .circleci/ansible
             ansible-playbook -i inventory.txt deploy-backend.yml
       - destroy-environment:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"        
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"        
       - revert_migration:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"
 
   smoke-test:
     docker:
@@ -343,9 +343,9 @@ jobs:
               aws cloudformation delete-stack --stack-name "udapeople-frontend-${OldWorkflowID}"
             fi
       - destroy-environment:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"        
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"        
       - revert_migration:
-          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"
+          workflow_id="${CIRCLE_WORKFLOW_ID:0:7}"
 
 workflows:
   build-compile-test:
