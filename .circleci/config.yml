@@ -5,7 +5,8 @@ commands:
     description: Destroy backend and frontend cloudformation stacks given a workflow ID.
     parameters:
       workflow_id:
-        type: string      
+        type: string
+        default: arns3
     steps:
       - run:
           name: Destroy environment << parameters.workflow_id >>
@@ -17,10 +18,10 @@ commands:
             aws cloudformation delete-stack --stack-name udapeople-frontend-<< parameters.workflow_id >>
   revert-migration:
     description: Revert the last migration if successfully run in the current workflow.
-    when: on_fail
     parameters:
       workflow_id:
-        type: string      
+        type: string  
+        default: arns3
     steps:
       - run:
           name: Revert migrations
