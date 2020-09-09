@@ -2,32 +2,24 @@ version: 2.1
 
 commands:
   destroy-environment:
-    description: Destroy backend and frontend cloudformation stacks given a workflow ID.
-    parameters:
-      workflow_id:
-        type: string
-        default: arns3      
+    description: Destroy backend and frontend cloudformation stacks given a workflow ID.      
     steps:
       - run:
-          name: Destroy environment << parameters.workflow_id >>
+          name: Destroy environment ${arns3}
           when: on_fail
           command: |
-            echo "Destroying environment: << parameters.workflow_id >> "
-            aws s3 rm s3://udapeople-<< parameters.workflow_id >> --recursive
-            aws cloudformation delete-stack --stack-name udapeople-backend-<< parameters.workflow_id >>
-            aws cloudformation delete-stack --stack-name udapeople-frontend-<< parameters.workflow_id >>
+            echo "Destroying environment: ${arns3} "
+            aws s3 rm s3://udapeople-${arns3} --recursive
+            aws cloudformation delete-stack --stack-name udapeople-backend-${arns3}
+            aws cloudformation delete-stack --stack-name udapeople-frontend-${arns3}
   revert-migration:
-    description: Revert the last migration if successfully run in the current workflow.
-    when: on_fail
-    parameters:
-      workflow_id:
-        type: string      
+    description: Revert the last migration if successfully run in the current workflow.     
     steps:
       - run:
           name: Revert migrations
           when: on_fail
           command: |
-            SUCCESS=$(curl -H "token: e52b52de-ee26-41a5-86e8-e8dcc3d995a5" --request GET https://api.memstash.io/values/migration_<< parameters.workflow_id >>)
+            SUCCESS=$(curl -H "token: e52b52de-ee26-41a5-86e8-e8dcc3d995a5" --request GET https://api.memstash.io/values/migration_${arns3})
             if (( $SUCCESS == 1 ));
             then
               cd ~/project/backend
