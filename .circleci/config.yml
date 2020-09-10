@@ -304,6 +304,11 @@ jobs:
           - attach_workspace:
               at: /tmp/workspace
           - run: apk add curl
+          - run:
+              name: Install dependencies
+              command: |
+                apk add --update curl nodejs npm
+                pip install awscli          
           - run: 
               name: smoke test backend
               command: |
