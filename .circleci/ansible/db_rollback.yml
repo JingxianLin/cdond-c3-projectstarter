@@ -23,5 +23,4 @@
 
   roles:
       - configure-server
-      - deploy
-      - configure-prometheus-node-exporter
+      - db-rollback
