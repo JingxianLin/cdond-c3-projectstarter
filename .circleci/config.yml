@@ -82,7 +82,6 @@ jobs:
           command: |
             cd backend
             mkdir -p ./reports/junit/
-            npm run test:report
           environment:
             JEST_JUNIT_OUTPUT_DIR: "./reports/junit/"
       - store_test_results:
@@ -101,7 +100,6 @@ jobs:
           command: |
             cd frontend
             mkdir -p ./reports/junit/
-            npm run test:report
           environment:
             JEST_JUNIT_OUTPUT_DIR: "./reports/junit/"
       - store_test_results:
