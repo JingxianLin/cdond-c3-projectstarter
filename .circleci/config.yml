@@ -298,6 +298,7 @@ jobs:
               if curl -s ${URL} | grep "Welcome"; then return 0; else return 1 ; fi
 
   smokeTest-backend:
+      executor: aws-cli/default      
       docker:
           - image: alpine:latest
       steps:
