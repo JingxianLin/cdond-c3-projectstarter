@@ -299,7 +299,9 @@ jobs:
 
   smokeTest-backend:     
       docker:
-          - image: amazon/aws-cli      
+          - image:
+              alpine:latest              
+              amazon/aws-cli      
       steps:
           - attach_workspace:
               at: /tmp/workspace
