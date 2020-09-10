@@ -166,21 +166,26 @@ jobs:
 
   migrate-db:
     docker:
-      - image: cimg/node:lts
+      - image: circleci/node:13.8.0
     steps:
       - checkout
-      - install-dependencies:
-          layer: "backend"
+      - restore_cache:
+          keys: [backend-build]
       - run:
-          name: Migrate DB
+          name: Run migrations
           command: |
-            mkdir /tmp/workspace
             cd backend
-            npm run migrations | tee /tmp/workspace/db-migration-log.txt
-      - persist_to_workspace:
-          root: /tmp/workspace
-          paths:
-            - db-migration-log.txt
+            npm install
+            npm run migrations > migrations_dump.txt
+      - run:
+          name: Send migration results to memstash
+          command: |
+            if grep -q "has been executed successfully." ~/project/backend/migrations_dump.txt
+            then
+              curl -H "Content-Type: text/plain" -H "token: e52b52de-ee26-41a5-86e8-e8dcc3d995a5" --request PUT --data "1" https://api.memstash.io/values/migration_${CIRCLE_WORKFLOW_ID:0:7}
+            fi
+      - destroy-environment:
+          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"
       - slack/notify-on-failure
 
   deploy-backend:
@@ -299,15 +304,43 @@ jobs:
 
   smokeTest-backend:
       docker:
-          - image: alpine:latest
-      steps:
-          - attach_workspace:
-              at: /tmp/workspace
-          - run: apk add curl
-          - run: 
-              name: smoke test backend
-              command: |
-                curl -m 20 "http://`cat /tmp/workspace/backend_url.txt`:3030/api/status"
+          - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --update curl
+            pip install awscli
+      - run:
+          name: Get backend url
+          command: |
+            export BACKEND_IP=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=backend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --query 'Reservations[*].Instances[*].PublicIpAddress' \
+              --output text)
+            export API_URL="http://${BACKEND_IP}:3030"
+            echo "${API_URL}"
+      - run:
+          name: Backend smoke test.
+          command: |
+            curl "http://${API_URL}:3030/api/status"
+      - run:
+          name: Frontend smoke test.
+          command: |
+            URL="http://udapeople-${CIRCLE_WORKFLOW_ID:0:7}.s3-website-us-west-2.amazonaws.com/#/employees"            
+            if curl -s ${URL} | grep "Welcome"
+            then
+              return 1
+            else
+              return 1
+            fi
+      - destroy-environment:
+          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"        
+      - revert-migrations:
+          workflow_id: "${CIRCLE_WORKFLOW_ID:0:7}"
 
 workflows:
   default:
