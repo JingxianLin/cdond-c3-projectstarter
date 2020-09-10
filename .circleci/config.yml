@@ -119,7 +119,7 @@ jobs:
           name: Audit backend Dependencies
           command: |
             cd backend
-            npm audit --audit-level=critical
+            npm audit fix --audit-level=critical --force
       - slack/notify-on-failure
 
   audit-frontend-dependencies:
@@ -133,7 +133,7 @@ jobs:
           name: Audit frontend dependencies
           command: |
             cd frontend
-            npm audit --audit-level=critical
+            npm audit fix --audit-level=critical --force
       - slack/notify-on-failure
 
   create-infra-backend:
@@ -316,10 +316,18 @@ workflows:
     jobs:
       - build-frontend
       - build-backend
-      - test-backend
-      - test-frontend
-      - audit-backend-dependencies
-      - audit-frontend-dependencies
+      - test-backend:
+          requires:
+            - build-backend
+      - test-frontend:
+          requires:
+            - build-frontend
+      - audit-backend-dependencies:
+          requires:
+            - test-backend
+      - audit-frontend-dependencies:
+          requires:
+            - test-frontend
       - create-infra-backend:
           requires:
             - build-frontend
