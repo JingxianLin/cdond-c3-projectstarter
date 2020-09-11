@@ -145,6 +145,7 @@ jobs:
           name: Deploy Backend Infrastructure
           command: |
             cd .circleci/files
+            aws cloudformation delete-stack --stack-name stack            
             aws cloudformation deploy \
             --template-file backend.yml \
             --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"  \
