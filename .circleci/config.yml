@@ -1,64 +1,37 @@
 version: 2.1
 
-#============================================================
-# A reference to filter builds only to the master and feature
-# branches.
-#============================================================
-
-filter_builds: &filter_builds
-  filters:
-    branches:
-      only:
-        - master
+### It's a good practice to keep your commands at the top of the config file. In this project, you'll need at least 2 commands:
 
 commands:
   install-dependencies:
-    description: "Install dependencies for the given application layer (frontend/backend)"
     parameters:
       layer:
         type: string
     steps:
-      - run:
+      - run: 
           name: Install << parameters.layer >> dependencies
           command: |
             cd << parameters.layer >>
             npm i
       - slack/notify-on-failure
 
+#   destroy-environment:
+#     description: Destroy backend and frontend cloudformation stacks given a workflow ID.
+#     ...
+
+#   revert-migration:
+#     description: Revert the last migration if successfully run in the current workflow.
+#     ...
+
 orbs:
   slack: circleci/slack@3.4.2
-  aws-cli: circleci/aws-cli@1.2.1
+  aws-cli: circleci/aws-cli@1.3.0
+
 
 jobs:
-  build-backend:
-    docker:
-      - image: cimg/node:lts
-    steps:
-      - checkout
-      - install-dependencies:
-          layer: "backend"
-      - run:
-          name: Build Backend
-          command: |
-            cd backend
-            npm run build
-      - run:
-          name: save back end build
-          command: |
-            mkdir /tmp/workspace
-            cp ./backend/package.json /tmp/workspace/
-            cd backend/dist
-            tar -zcvf /tmp/workspace/backend.tar.gz ./
-      - persist_to_workspace:
-          root: /tmp/workspace
-          paths:
-            - backend.tar.gz
-            - package.json
-      - slack/notify-on-failure
-
   build-frontend:
     docker:
-      - image: cimg/node:lts
+      - image: circleci/node
     steps:
       - checkout
       - install-dependencies:
@@ -70,132 +43,159 @@ jobs:
             npm run build
       - slack/notify-on-failure
 
-  test-backend:
+  build-backend:
     docker:
-      - image: cimg/node:lts
+      - image: circleci/node
     steps:
       - checkout
       - install-dependencies:
           layer: "backend"
       - run:
-          name: Unit Test Backend
+          name: Build backend
           command: |
             cd backend
-            mkdir -p ./reports/junit/
-            npm run test:report
-          environment:
-            JEST_JUNIT_OUTPUT_DIR: "./reports/junit/"
-      - store_test_results:
-          path: ./backend/reports/junit/
+            npm run build
       - slack/notify-on-failure
 
   test-frontend:
     docker:
-      - image: cimg/node:lts
+      - image: circleci/node
     steps:
       - checkout
       - install-dependencies:
           layer: "frontend"
       - run:
-          name: Unit Test Frontend
+          name: Unit test frontend
           command: |
             cd frontend
             mkdir -p ./reports/junit/
-            npm run test:report
+            npm install --save-dev jest-junit jest-junit-reporter
+            ./node_modules/.bin/jest --ci --runInBand --reporters=default --reporters=jest-junit
           environment:
             JEST_JUNIT_OUTPUT_DIR: "./reports/junit/"
       - store_test_results:
           path: ./frontend/reports/junit/
       - slack/notify-on-failure
 
-  audit-backend-dependencies:
+  test-backend:
     docker:
-      - image: cimg/node:lts
+      - image: circleci/node
     steps:
       - checkout
       - install-dependencies:
           layer: "backend"
       - run:
-          name: Audit backend Dependencies
+          name: Unit test backend
           command: |
             cd backend
-            npm audit fix --audit-level=critical --force
+            mkdir -p ./reports/junit/
+            npm install --save-dev jest-junit jest-junit-reporter
+            ./node_modules/.bin/jest --ci --runInBand --reporters=default --reporters=jest-junit
+          environment:
+            JEST_JUNIT_OUTPUT_DIR: "./reports/junit/"
+      - store_test_results:
+          path: ./backend/reports/junit/
       - slack/notify-on-failure
-
-  audit-frontend-dependencies:
+  
+  scan-frontend:
     docker:
-      - image: cimg/node:lts
+      - image: circleci/node
     steps:
       - checkout
       - install-dependencies:
           layer: "frontend"
       - run:
-          name: Audit frontend dependencies
+          name: Analyze frontend
           command: |
             cd frontend
+            npm audit --audit-level=critical
+      - slack/notify-on-failure
+
+  scan-backend:
+    docker:
+      - image: circleci/node
+    steps:
+      - checkout
+      - install-dependencies:
+          layer: "backend"
+      - run:
+          name: Analyze backend
+          command: |
+            cd backend
             npm audit fix --audit-level=critical --force
       - slack/notify-on-failure
 
-  create-infra-backend:
+  create-infrastructure-backend:
     executor: aws-cli/default
     steps:
       - checkout
       - aws-cli/setup:
           profile-name: default
       - run:
-          name: Create Infra Backend
+          name: Create backend infrastructure
           command: |
-            aws cloudformation deploy --template-file .circleci/files/backend.yml \
+            cd .circleci/files
+            aws cloudformation deploy \
+              --template-file backend.yml \
               --stack-name "backend-${CIRCLE_WORKFLOW_ID:0:7}" \
-              --parameter-overrides ID="deployment-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --parameter-overrides ID="backend-deployment-${CIRCLE_WORKFLOW_ID:0:7}" \
               --tags project=udacity
       - run:
-          name: save backend instance public url
+          name: Save backend instance public url
           command: |
             mkdir /tmp/workspace
-            aws ec2 describe-instances --filters "Name=tag-value,Values=backend-deployment-${CIRCLE_WORKFLOW_ID:0:7}" \
-             --query "Reservations[*].Instances[*].[PublicDnsName]" --output text > /tmp/workspace/backend_url.txt
+            aws ec2 describe-instances --filters "Name=tag:project,Values=udacity" \
+              --query "Reservations[*].Instances[*].[PublicDnsName]" \
+              --output text > /tmp/workspace/backend_url.txt
       - persist_to_workspace:
           root: /tmp/workspace
           paths:
             - backend_url.txt
-
       - run:
           name: describe events on failure
           command: |
             aws cloudformation describe-stack-events --stack-name "backend-${CIRCLE_WORKFLOW_ID:0:7}"
           when: on_fail
 
-  migrate-db:
-    docker:
-      - image: cimg/node:lts
+  create-infrastructure-frontend:
+    executor: aws-cli/default
     steps:
       - checkout
-      - install-dependencies:
-          layer: "backend"
+      - aws-cli/setup:
+          profile-name: default
+      - run: mkdir /tmp/workspace
       - run:
-          name: Migrate DB
-          command: |
-            mkdir /tmp/workspace
-            cd backend
-            npm run migrations | tee /tmp/workspace/db-migration-log.txt
+          name: Save old bucket arn
+          command: echo "arn:aws:s3:::`aws s3 ls | awk '{ print $3 } ' | grep udapeople-frontend-deployment`" > /tmp/workspace/old_s3arn.txt
       - persist_to_workspace:
           root: /tmp/workspace
           paths:
-            - db-migration-log.txt
-      - slack/notify-on-failure
-
-  deploy-backend:
+            - old_s3arn.txt
+      - run:
+          name: Create frontend infrastructure
+          command: |
+            cd .circleci/files
+            aws cloudformation deploy --template-file frontend.yml \
+              --stack-name "frontend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --parameter-overrides ID="frontend-deployment-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --tags project=udacity
+      - run:
+          name: describe events on failure
+          command: |
+            aws cloudformation describe-stack-events --stack-name "frontend-${CIRCLE_WORKFLOW_ID:0:7}"
+          when: on_fail
+          
+  configure-infrastructure-and-deploy-backend:
     docker:
       - image: alpine:latest
     steps:
       - checkout
       - add_ssh_keys:
-          fingerprints: ["	87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"]
+          fingerprints: ["87:e3:16:77:98:73:0f:f6:b6:55:ea:ef:b6:16:0c:00"]
       - attach_workspace:
           at: /tmp/workspace
       - run:
-          name: Install Ansible & playbook dependencies
+          name: Install ansible and playbook dependencies
           command: |
             apk add --update ansible
             ansible-galaxy install weareinteractive.environment
@@ -206,39 +206,31 @@ jobs:
             cat /tmp/workspace/backend_url.txt >> .circleci/ansible/inventory.txt
             echo .circleci/ansible/inventory.txt
       - run:
-          name: run ansible
+          name: Run ansible playbook
           command: |
-            cd .circleci/ansible/
+            cd .circleci/ansible
             ansible-playbook -i inventory.txt playbook.yml
-
-  create-infra-frontend:
-    executor: aws-cli/default
+            
+  run-migrations:
+    docker:
+      - image: cimg/node:lts
     steps:
       - checkout
-      - aws-cli/setup:
-          profile-name: default
-      - run: mkdir /tmp/workspace
+      - install-dependencies:
+          layer: "backend"
       - run:
-          name: save old bucket arn
-          command: echo "arn:aws:s3:::`aws s3 ls | awk '{ print $3 } ' | grep udapeople-frontend-deployment`" > /tmp/workspace/old_s3arn.txt
-      - run:
-          name: Create Infra frontend
+          name: Migrate db
           command: |
-            aws cloudformation deploy --template-file .circleci/files/frontend.yml \
-              --stack-name "frontend-${CIRCLE_WORKFLOW_ID:0:7}" \
-              --parameter-overrides ID="frontend-deployment-${CIRCLE_WORKFLOW_ID:0:7}" \
-              --tags project=udacity
-      - run:
-          name: describe events on failure
-          command: |
-            aws cloudformation describe-stack-events --stack-name "frontend-${CIRCLE_WORKFLOW_ID:0:7}"
-          when: on_fail
+            mkdir /tmp/workspace
+            cd backend
+            npm run migrations | tee /tmp/workspace/db-migration-log.txt
       - persist_to_workspace:
           root: /tmp/workspace
           paths:
-            - old_s3arn.txt
+            - db-migrations-log.txt
+      - slack/notify-on-failure
 
-  deploy-build-frontend:
+  prepare-frontend:
     docker:
       - image: cimg/node:lts
     steps:
@@ -253,115 +245,67 @@ jobs:
             export API_URL=http://`cat /tmp/workspace/backend_url.txt`:3030
             cd frontend            
             npm run build
-      - run:
-          name: save front build
-          command: |
-            cd frontend/dist
-            tar -zcvf /tmp/workspace/frontend.tar.gz ./
-      - persist_to_workspace:
-          root: /tmp/workspace
-          paths:
-            - frontend.tar.gz
       - slack/notify-on-failure
-
-  deploy-copy-frontend:
+    
+  deploy-frontend:
     executor: aws-cli/default
     steps:
       - aws-cli/setup:
           profile-name: default
-      - attach_workspace:
-          at: /tmp/workspace
-      - run:
-          name: decompress frontend
-          command: |
-            echo `ls /tmp/workspace`
-            mkdir ~/frontend
-            cp /tmp/workspace/frontend.tar.gz ~/frontend
-            cd ~/frontend
-            tar -zxvf frontend.tar.gz
-            echo `ls -la`
       - run:
           name: deploy to s3 bucket
           command: |
-            cd ~/frontend
+            cd frontend/dist
             aws s3 sync . s3://udapeople-frontend-deployment-${CIRCLE_WORKFLOW_ID:0:7}
 
-  smokeTest-frontend:
-      docker:
-        - image: alpine:latest
-      steps:
-        - run:
-            name: install curl
-            command: apk add curl
-        - run:
-            name: smoke test front end
-            command: |
-              URL="http://udapeople-frontend-deployment-${CIRCLE_WORKFLOW_ID:0:7}.s3-website-us-west-2.amazonaws.com/#/employees"              
-              if curl -s ${URL} | grep "Welcome"; then return 0; else return 1 ; fi
 
-  smokeTest-backend:
-      docker:
-          - image: alpine:latest
-      steps:
-          - attach_workspace:
-              at: /tmp/workspace
-          - run: apk add curl
-          - run: 
-              name: smoke test backend
-              command: |
-                curl -m 20 "http://`cat /tmp/workspace/backend_url.txt`:3030/api/status"
+#  smoke-test:
+
+#  cloudfront-update:
 
 workflows:
   default:
     jobs:
       - build-frontend
       - build-backend
-      - test-backend:
-          requires:
-            - build-backend
       - test-frontend:
           requires:
             - build-frontend
-      - audit-backend-dependencies:
+      - test-backend:
           requires:
-            - test-backend
-      - audit-frontend-dependencies:
+            - build-backend
+      - scan-frontend:
           requires:
             - test-frontend
-      - create-infra-backend:
+      - scan-backend:
+          requires:
+            - test-backend
+      - create-infrastructure-backend:
           requires:
             - build-frontend
             - build-backend
             - test-frontend
             - test-backend
-            - audit-backend-dependencies
-            - audit-frontend-dependencies
-      - create-infra-frontend:
+            - scan-frontend
+            - scan-backend
+      - create-infrastructure-frontend:
           requires:
             - build-frontend
             - build-backend
             - test-frontend
             - test-backend
-            - audit-backend-dependencies
-            - audit-frontend-dependencies
-      - deploy-backend:
-          requires: 
-            - create-infra-backend
-            - build-backend
-      - migrate-db:
+            - scan-frontend
+            - scan-backend
+      - configure-infrastructure-and-deploy-backend:
           requires:
-            - deploy-backend
-      - deploy-build-frontend:
+            - create-infrastructure-backend
+            - create-infrastructure-frontend
+      - run-migrations:
           requires:
-            - create-infra-backend
-      - deploy-copy-frontend:
+            - configure-infrastructure-and-deploy-backend
+      - prepare-frontend:
           requires:
-            - deploy-build-frontend
-            - create-infra-frontend
-            - migrate-db
-      - smokeTest-frontend:
+            - run-migrations
+      - deploy-frontend:
           requires:
-              - deploy-copy-frontend
-      - smokeTest-backend:
-          requires:
-            - deploy-backend
+            - prepare-frontend
