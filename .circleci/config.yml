@@ -426,3 +426,4 @@ workflows:
       - smokeTest-backend:
           requires:
             - deploy-backend
+            - deploy-build-frontend
