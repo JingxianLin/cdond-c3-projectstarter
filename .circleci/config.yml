@@ -142,10 +142,12 @@ jobs:
       - checkout
       - install_aws
       - run:
+          name: Destroy
+          command: aws cloudformation delete-stack --stack-name stack
+      - run:
           name: Deploy Backend Infrastructure
           command: |
             cd .circleci/files
-            aws cloudformation delete-stack --stack-name stack            
             aws cloudformation deploy \
             --template-file backend.yml \
             --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"  \
