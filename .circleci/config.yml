@@ -14,7 +14,7 @@ commands:
       - run:
           name: Destroy environment
           command: |
-            aws s3 rb s3://udapeople-website/ --force
+            aws s3 rb s3://udapeople-"${CIRCLE_WORKFLOW_ID}"/ --force
             aws cloudformation delete-stack --stack-name frontend-stack
             aws cloudformation delete-stack --stack-name backend-stack
           when: on_fail  
@@ -148,7 +148,7 @@ jobs:
             aws cloudformation deploy \
             --template-file backend.yml \
             --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"  \
-            --stack-name backend-stack
+            --stack-name stack
       - run:
           name: Deploy Frontend Infrastructure
           command: |
@@ -156,7 +156,7 @@ jobs:
             aws cloudformation deploy \
             --template-file frontend.yml \
             --parameter-overrides ID="${CIRCLE_WORKFLOW_ID}"  \
-            --stack-name frontend-stack
+            --stack-name stack
       - run:
           name: Add Backend EC2 Instance IP to inventory
           command: |
