@@ -108,7 +108,7 @@ jobs:
           name: Analyze frontend
           command: |
             cd frontend
-            npm audit --audit-level=critical
+            npm audit fix --audit-level=critical --force
       - slack/notify-on-failure
 
   scan-backend:
