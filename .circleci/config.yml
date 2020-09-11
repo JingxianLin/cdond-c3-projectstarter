@@ -290,7 +290,7 @@ workflows:
           requires: [build-frontend]
       - test-backend:
           requires: [build-backend]
-      - deploy-infrastructure
+      - deploy-infrastructure:
           requires:
             - test-frontend
             - test-backend
