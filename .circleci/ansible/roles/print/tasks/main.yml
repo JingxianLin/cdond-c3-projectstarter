@@ -14,12 +14,12 @@
   apt:
     autoremove: yes
 
-- name: "install dependencies for server."
-  become: yes
-  apt:
-    name: ["nodejs", "npm"]
-    state: latest
-    update_cache: yes
+
+- name: "install node 12.X"
+  shell: |
+    curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+    sudo apt -y upgrade
+    sudo apt install -y nodejs
 
 - name: "install python."
   become: true
@@ -42,11 +42,11 @@
     block: |
       export ENVIRONMENT=production
       export TYPEORM_CONNECTION=postgres
-      export TYPEORM_ENTITIES=./src/modules/domain/**/*.entity.ts
-      export TYPEORM_HOST=superpowers.ckbdwvzp4iah.us-west-2.rds.amazonaws.com
+      export TYPEORM_ENTITIES=./src/modules/domain/*/.entity.ts
+      export TYPEORM_HOST=superpowers.c0jbboicaqrv.af-south-1.rds.amazonaws.com
       export TYPEORM_PORT=5432
       export TYPEORM_USERNAME=superpowers
-      export TYPEORM_PASSWORD=FE14A09$
+      export TYPEORM_PASSWORD=superpowers
       export TYPEORM_DATABASE=superpowers
     marker: "# {mark} ANSIBLE MANAGED BLOCK "
 

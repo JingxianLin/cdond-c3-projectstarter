@@ -1,36 +1,24 @@
----
-
-- name: "Copy backend files to remote server"
-  poll: 60
+- name: Creates directory
+  file:
+    path: /home/ubuntu/backend
+    state: directory
+- name: "move backend files to server."
   copy:
-    dest: /home/ubuntu/
-    src: /root/project/backend.tar.gz
+    src: /root/project/backend
+    dest: /home/ubuntu
 
-- name: "Decompress backend source code"
-  poll: 60
+- name: "install package dependencies"
   shell: |
-    cd /home/ubuntu
-    mkdir backend
-    tar -xzvf backend.tar.gz -C .
-- name: "Build npm packages"
-  poll: 60
+    cd /home/ubuntu/backend    
+    npm install 
+    
+- name: "build package"
   shell: |
     cd /home/ubuntu/backend
-    sudo npm cache clean -f
-    sudo npm install -g n
-    sudo n stable
-    PATH="$PATH"
-    npm i
     npm run build
-- name: "run migrations and save status to memstash.io"
-  poll: 60
+
+- name: Executing node
+  become: true
   shell: |
-    cd /home/ubuntu/backend
-    npm run migrations > migrations.txt
-    cat migrations.txt
-    curl -H "Content-Type: text/plain" -H "token: 43f5331f-b3fe-41b4-8f33-1ef7fd665b51" --request PUT --data $( grep -c "No migrations are pending" migrations.txt ) https://api.memstash.io/values/migration_status
-- name: "use pm2 to run the node server"
-  poll: 60
-  shell: |
-    cd /home/ubuntu/backend/dist
+    cd /home/ubuntu/backend 
     pm2 start npm -- run "start:dev"
