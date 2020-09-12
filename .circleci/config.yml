@@ -365,13 +365,13 @@ workflows:
         # - prepare_distribution_frontend_files_to_s3
             requires:
               - build_copy_bend_files
-        # - run_smoke_test:
-        #     requires:
-        #       - prepare_distribution_frontend_files_to_s3
+        - run_smoke_test:
+            requires:
+              - prepare_distribution_frontend_files_to_s3
         - promote_to_production:
             filters:
               branches:
                 only: master
             requires:
-              # - run_smoke_test
+              - run_smoke_test
               - prepare_distribution_frontend_files_to_s3
