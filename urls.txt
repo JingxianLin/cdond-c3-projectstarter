@@ -6,11 +6,21 @@ URL02:
 
 https://app.circleci.com/pipelines/github/JingxianLin/cdond-c3-projectstarter
 
+https://github.com/JingxianLin/cdond-c3-projectstarter/blob/master/.circleci/config.yml
+
 https://github.com/JingxianLin/cdond-c3-projectstarter/blob/master/.circleci/files/frontend.yml
 
 URL03:
 
 https://github.com/JingxianLin/cdond-c3-projectstarter/blob/master/.circleci/files/backend.yml
+
+https://github.com/JingxianLin/cdond-c3-projectstarter/blob/master/.circleci/ansible/deploy.yml
+
+https://github.com/JingxianLin/cdond-c3-projectstarter/blob/master/.circleci/ansible/roles/configure-prometheus-node-exporter/tasks/main.yml
+
+https://github.com/JingxianLin/cdond-c3-projectstarter/blob/master/.circleci/ansible/roles/deploy/tasks/main.yml
+
+http://udapeople-s3bucket-f3cf90bd-2626-40e1-8484-72046fcf6421.s3-website-us-west-2.amazonaws.com
 
 URL04:
 
@@ -18,7 +28,7 @@ d21h920wbs1kds.cloudfront.net
 
 URL05:
 
-http://udapeople-s3bucket-f3cf90bd-2626-40e1-8484-72046fcf6421.s3-website-us-west-2.amazonaws.com/#/employees
+ec2-54-214-118-242.us-west-2.compute.amazonaws.com
 
 URL06:
 
